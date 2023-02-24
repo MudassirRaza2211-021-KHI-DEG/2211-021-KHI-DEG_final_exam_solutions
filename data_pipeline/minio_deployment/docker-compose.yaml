@@ -1,0 +1,62 @@
+version: "3.9"
+services:
+  minio-server:
+    image: minio/minio:latest
+    hostname: minio-server
+    container_name: minio-server
+    networks:
+      default:
+    volumes:
+      - ./s3_data:/data
+    ports:
+      - "9000:9000"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: server /data
+
+  minio-client:
+    image: minio/mc
+    hostname: minio-client
+    container_name: minio-client
+    networks:
+      default:
+    depends_on:
+      - minio-server
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc config;
+      /usr/bin/mc config host add myminio http://minio-server:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+      /usr/bin/mc mb --ignore-existing myminio/test-bucket;
+      exit 0;
+      "
+  
+  data_reader:
+    build: ../data_reader 
+    container_name: data_reader
+    restart: always
+    depends_on:
+      - postgres
+    ports:
+        - "5000:5000"  
+
+    environment:
+      POSTGRES_URL: jdbc:postgresql://127.0.0.1:5432/mydb
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_HOST: postgres_container
+      POSTGRES_TABLE: mytable
+    
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres_container
+    restart: always
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: mydb
+    volumes:
+      # copy the sql script to create tables
+      - ./sql/create_tables.sql:/docker-entrypoint-initdb.d/create_tables.sql
+    ports:
+      - "5432:5432"
